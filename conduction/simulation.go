@@ -3,7 +3,6 @@ package conduction
 import (
 	"conduction/file"
 	"conduction/solver"
-	"conduction/utils"
 	"fmt"
 	"log"
 	"math"
@@ -41,29 +40,27 @@ func New1DConductionSimulation(simInput *SimulationInput) *Simulation {
 	sim.SetConductanceMatrix()
 	sim.SetSourceVector()
 	sim.SetBoundaryConditions()
-	utils.PrintDense(sim.solver1D.A)
 
 	return sim
 }
 
 func (s *Simulation) Start() {
 	// Setup parameters
-	deltaT := 1000.0
+	deltaT := math.Inf(1)
 	tolerance := s.parameters.Tolerance
-	iteration := 0
+
+	var iteration int
 	iterationMax := s.parameters.IterationMax
 
 	// Temperature vector
 	var err error
 
 	for deltaT > tolerance && iteration < iterationMax {
-		fmt.Printf("BVec: %v \n", s.solver1D.B)
 		err = s.solver1D.Solve()
 		if err != nil {
 			log.Panicf("Error in solver1D: %v \n", err)
 		}
 		s.UpdateState()
-		fmt.Printf("TVec: %v \n", s.solver1D.T)
 		deltaT = s.GetTemperatureNorm()
 		s.UpdatePreviousState()
 		iteration += 1

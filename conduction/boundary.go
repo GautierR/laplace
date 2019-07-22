@@ -55,7 +55,7 @@ func (s *Simulation) SetSourceVector() {
 	}
 }
 
-// SetBoundaryCondition setup A matric and B vector according to the local BC
+// SetBoundaryCondition setup A matrix and B vector according to the local BC
 func (s *Simulation) SetBoundaryConditions() {
 	nElem := len(s.elements)
 	A := s.solver1D.A
