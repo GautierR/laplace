@@ -7,17 +7,10 @@ import (
 )
 
 type SimulationInput struct {
-	Domains            []Domain            `json:"domain"`
-	BoundaryConditions []BoundaryCondition `json:"boundary_conditions"`
-	InitialConditions  InitialConditions   `json:"initial_conditions"`
-	Parameters         Parameters          `json:"parameters"`
-}
-
-type Domain struct {
-	Start    float64    `json:"start"`
-	End      float64    `json:"end"`
-	Source   HeatSource `json:"source"`
-	Material Material   `json:"material"`
+	Domains            []Domain                 `json:"domain"`
+	BoundaryConditions []map[string]interface{} `json:"boundary_conditions"`
+	InitialConditions  InitialConditions        `json:"initial_conditions"`
+	Parameters         Parameters               `json:"parameters"`
 }
 
 type HeatSource struct {
@@ -25,29 +18,15 @@ type HeatSource struct {
 	Linear   float64 `json:"linear"`
 }
 
-type Material struct {
-	Name         string  `json:"name"`
-	Density      float64 `json:"density"`
-	Conductivity float64 `json:"conductivity"`
-	SpecificHeat float64 `json:"specific_heat"`
-}
-
-type BoundaryCondition struct {
-	Start  float64 `json:"start"`
-	End    float64 `json:"end"`
-	BCType string  `json:"bc_type"`
-	Value  float64 `json:"value"`
-	Value2 float64 `json:"value_2"`
-}
-
 type InitialConditions struct {
 	Temperature float64 `json:"temperature"`
 }
 
 type Parameters struct {
-	IterationMax int     `json:"iteration_max"`
-	Tolerance    float64 `json:"tolerance"`
-	NElement     int     `json:"n_element"`
+	IterationMax    int     `json:"iteration_max"`
+	Tolerance       float64 `json:"tolerance"`
+	NElement        int     `json:"n_element"`
+	InterfaceMethod string  `json:"interface_method"`
 }
 
 func NewSimulationInput(fileName string) *SimulationInput {
@@ -67,6 +46,7 @@ func NewSimulationInput(fileName string) *SimulationInput {
 }
 
 func (sI *SimulationInput) GetDomainLimits() (start float64, end float64) {
+	// TBD : Implement domains inspection
 	start = sI.Domains[0].Start
 	end = sI.Domains[len(sI.Domains)-1].End
 	return
@@ -80,7 +60,7 @@ func (s *Simulation) ApplyGeometry(domains []Domain) {
 		}
 		for _, element := range s.elements {
 			if domain.Start <= element.xPosition &&
-				element.xPosition <= domain.End+1e9 {
+				element.xPosition <= domain.End+1e-9 {
 				element.Geometry = geometry
 			}
 		}

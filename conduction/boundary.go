@@ -1,163 +1,110 @@
 package conduction
 
-// SetConductanceMatrix return []float64 array arranged to be able to create a BandDense matrix
-func (s *Simulation) SetConductanceMatrix() {
-	A := s.solver1D.A
-	nElem := len(s.elements)
+import (
+	"log"
+)
 
-	var elem *Element
-	var prevElem *Element
-	var nextElem *Element
-
-	// First element
-	idx := 0
-	elem = s.elements[idx]
-	nextElem = s.NextElem(elem)
-	conductivity := elem.Material.Conductivity
-	deltaX := nextElem.DistanceFromElement(elem)
-
-	aValue := 2 * conductivity / deltaX
-	aNeighbour := conductivity / deltaX
-	A.SetBand(idx, idx, aValue)
-	A.SetBand(idx, idx+1, -aNeighbour)
-
-	for idx = 1; idx < nElem-1; idx++ {
-		elem = s.elements[idx]
-		prevElem = s.PrevElem(elem)
-		nextElem = s.NextElem(elem)
-		conductivity = elem.Material.Conductivity
-		deltaX = nextElem.DistanceFromElement(elem)
-
-		aValue = 2 * conductivity / deltaX
-		aNeighbour = conductivity / deltaX
-		A.SetBand(idx, idx-1, -aNeighbour)
-		A.SetBand(idx, idx, aValue)
-		A.SetBand(idx, idx+1, -aNeighbour)
-	}
-
-	// Last element
-	elem = s.elements[idx]
-	prevElem = s.PrevElem(elem)
-	conductivity = elem.Material.Conductivity
-	deltaX = elem.DistanceFromElement(prevElem)
-
-	aValue = 2 * conductivity / deltaX
-	aNeighbour = conductivity / deltaX
-	A.SetBand(idx, idx-1, -aNeighbour)
-	A.SetBand(idx, idx, aValue)
+type BoundaryCondition interface {
+	Start() float64
+	End() float64
+	SetAtElement(e *Element)
 }
 
-// GetSourceVector return a VecDense used afterward in matrix inversion
-func (s *Simulation) SetSourceVector() {
-	B := s.solver1D.B
-	for _, elem := range s.elements {
-		B.SetVec(elem.eNum, elem.Source.Constant*elem.length)
-	}
+type TemperatureBoundaryCondition struct {
+	BoundaryCondition
+	start       float64
+	end         float64
+	Temperature float64
 }
 
-// SetBoundaryCondition setup A matrix and B vector according to the local BC
-func (s *Simulation) SetBoundaryConditions() {
-	nElem := len(s.elements)
-	A := s.solver1D.A
-	B := s.solver1D.B
+type HeatFluxBoundaryCondition struct {
+	BoundaryCondition
+	start    float64
+	end      float64
+	HeatFlux float64
+}
 
-	for _, bC := range s.boundaryConditions {
-		// First Element
-		idx := 0
-		firstElem := s.elements[0]
-		if firstElem.xPosition >= bC.Start && firstElem.xPosition <= bC.End {
-			switch bC.BCType {
+type HeatTransferCoefficientBoundaryCondition struct {
+	BoundaryCondition
+	start                   float64
+	end                     float64
+	HeatTransferCoefficient float64
+	InfinityTemperature     float64
+}
+
+func ParseBoundaryConditions(boundaryConditions []map[string]interface{}) (bCS []BoundaryCondition) {
+	bCS = make([]BoundaryCondition, len(boundaryConditions))
+
+	for i, bC := range boundaryConditions {
+		if _, typeExist := bC["type"]; typeExist {
+			switch bC["type"] {
 			case "constant_temperature":
-				A.SetBand(idx, idx, 1)
-				A.SetBand(idx, idx+1, 0)
-				B.SetVec(idx, bC.Value)
-
+				bCS[i] = TemperatureBoundaryCondition{
+					start:       bC["start"].(float64),
+					end:         bC["end"].(float64),
+					Temperature: bC["temperature"].(float64),
+				}
 			case "constant_heat_flux":
-				conductivity := firstElem.Material.Conductivity
-				deltaX := s.NextElem(firstElem).DistanceFromElement(firstElem)
-				aValue := (conductivity / deltaX) - firstElem.Source.Linear*firstElem.length
-				aNeighbour := conductivity / deltaX
-				A.SetBand(idx, idx, aValue)
-				A.SetBand(idx, idx+1, -aNeighbour)
-				B.SetVec(idx, bC.Value+firstElem.Source.Constant*firstElem.length)
-
-			case "convection":
-				conductivity := firstElem.Material.Conductivity
-				deltaX := s.NextElem(firstElem).DistanceFromElement(firstElem)
-				htc := bC.Value
-				tFluid := bC.Value2
-				aValue := (conductivity / deltaX) + htc - firstElem.Source.Linear*firstElem.length
-				aNeighbour := conductivity / deltaX
-				A.SetBand(idx, idx, aValue)
-				A.SetBand(idx, idx+1, -aNeighbour)
-				B.SetVec(idx, htc*tFluid+firstElem.Source.Constant*firstElem.length)
-			}
-		}
-
-		for idx = 1; idx < nElem-1; idx++ {
-			elem := s.elements[idx]
-			if elem.xPosition >= bC.Start && elem.xPosition <= bC.End {
-				switch bC.BCType {
-				case "constant_temperature":
-					A.SetBand(idx, idx-1, 0)
-					A.SetBand(idx, idx, 1)
-					A.SetBand(idx, idx+1, 0)
-					B.SetVec(idx, bC.Value)
-
-				case "constant_heat_flux":
-					conductivity := elem.Material.Conductivity
-					deltaX := s.NextElem(elem).DistanceFromElement(elem)
-					aValue := 2*(conductivity/deltaX) - elem.Source.Linear*elem.length
-					aNeighbour := conductivity / deltaX
-					A.SetBand(idx, idx-1, -aNeighbour)
-					A.SetBand(idx, idx, aValue)
-					A.SetBand(idx, idx+1, -aNeighbour)
-					B.SetVec(idx, bC.Value+elem.Source.Constant*elem.length)
-
-				case "convection":
-					conductivity := elem.Material.Conductivity
-					deltaX := s.NextElem(elem).DistanceFromElement(elem)
-					htc := bC.Value
-					tFluid := bC.Value2
-					aValue := (conductivity / deltaX) + htc - elem.Source.Linear*elem.length
-					aNeighbour := conductivity / deltaX
-					A.SetBand(idx, idx-1, -aNeighbour)
-					A.SetBand(idx, idx, aValue)
-					A.SetBand(idx, idx+1, -aNeighbour)
-					B.SetVec(idx, htc*tFluid+elem.Source.Constant*elem.length)
+				bCS[i] = HeatFluxBoundaryCondition{
+					start:    bC["start"].(float64),
+					end:      bC["end"].(float64),
+					HeatFlux: bC["heat_flux"].(float64),
+				}
+			case "heat_transfer_coefficient":
+				bCS[i] = HeatTransferCoefficientBoundaryCondition{
+					start:                   bC["start"].(float64),
+					end:                     bC["end"].(float64),
+					HeatTransferCoefficient: bC["heat_transfer_coefficient"].(float64),
+					InfinityTemperature:     bC["infinity_temperature"].(float64),
 				}
 			}
-		}
-
-		// Last Element
-		lastElem := s.elements[idx]
-		if lastElem.xPosition >= bC.Start && lastElem.xPosition <= bC.End+1e-9 {
-			switch bC.BCType {
-			case "constant_temperature":
-				A.SetBand(idx, idx-1, 0)
-				A.SetBand(idx, idx, 1)
-				B.SetVec(idx, bC.Value)
-
-			case "constant_heat_flux":
-				conductivity := lastElem.Material.Conductivity
-				deltaX := lastElem.length
-				aValue := (conductivity / deltaX) - lastElem.Source.Linear*lastElem.length
-				aNeighbour := conductivity / deltaX
-				A.SetBand(idx, idx-1, -aNeighbour)
-				A.SetBand(idx, idx, aValue)
-				B.SetVec(idx, bC.Value+lastElem.Source.Constant*lastElem.length)
-
-			case "convection":
-				conductivity := lastElem.Material.Conductivity
-				deltaX := s.NextElem(lastElem).DistanceFromElement(lastElem)
-				htc := bC.Value
-				tFluid := bC.Value2
-				aValue := (conductivity / deltaX) + htc - lastElem.Source.Linear*lastElem.length
-				aNeighbour := conductivity / deltaX
-				A.SetBand(idx, idx-1, -aNeighbour)
-				A.SetBand(idx, idx, aValue)
-				B.SetVec(idx, htc*tFluid+lastElem.Source.Constant*lastElem.length)
-			}
+		} else {
+			log.Panicf("Missing boundary condition type.")
 		}
 	}
+	return
+}
+
+func (bC TemperatureBoundaryCondition) Start() float64 {
+	return bC.start
+}
+
+func (bC TemperatureBoundaryCondition) End() float64 {
+	return bC.end
+}
+
+func (bC HeatFluxBoundaryCondition) Start() float64 {
+	return bC.start
+}
+
+func (bC HeatFluxBoundaryCondition) End() float64 {
+	return bC.end
+}
+
+func (bC HeatTransferCoefficientBoundaryCondition) Start() float64 {
+	return bC.start
+}
+
+func (bC HeatTransferCoefficientBoundaryCondition) End() float64 {
+	return bC.end
+}
+
+func (bC TemperatureBoundaryCondition) SetAtElement(e *Element) {
+	if e.previousElement != nil {
+		*e.aW = 0
+	}
+	if e.nextElement != nil {
+		*e.aE = 0
+	}
+	*e.aP = 1
+	*e.b = bC.Temperature
+}
+
+func (bC HeatFluxBoundaryCondition) SetAtElement(e *Element) {
+	*e.b += bC.HeatFlux
+}
+
+func (bC HeatTransferCoefficientBoundaryCondition) SetAtElement(e *Element) {
+	*e.aP += bC.HeatTransferCoefficient
+	*e.b += bC.HeatTransferCoefficient * bC.InfinityTemperature
 }

@@ -3,7 +3,9 @@ package conduction
 import (
 	"conduction/file"
 	"conduction/solver"
+	"conduction/utils"
 	"fmt"
+	"gonum.org/v1/gonum/mat"
 	"log"
 	"math"
 )
@@ -12,33 +14,43 @@ type Simulation struct {
 	solver1D           *solver.Solver1D
 	elements           []*Element
 	boundaryConditions []BoundaryCondition
-	initialConditions  InitialConditions
 	parameters         Parameters
+	stateVector        *mat.VecDense
+	prevStateVector    *mat.VecDense
 }
 
 func New1DConductionSimulation(simInput *SimulationInput) *Simulation {
 	// Generate mesh
 	nElement := simInput.Parameters.NElement
+
+	// Get simulation domain limits
 	start, end := simInput.GetDomainLimits()
 
+	// Generate the mesh grid
 	grid, err := NewEquidistantGrid(start, end, nElement)
 	if err != nil {
 		fmt.Printf("Grid generation error: %v \n", err)
 	}
 
+	// Generate simulation object
 	sim := &Simulation{
+		solver1D:           solver.NewSolver1D(nElement),
 		elements:           grid,
-		boundaryConditions: simInput.BoundaryConditions,
-		initialConditions:  simInput.InitialConditions,
+		boundaryConditions: ParseBoundaryConditions(simInput.BoundaryConditions),
 		parameters:         simInput.Parameters,
+		prevStateVector:    mat.NewVecDense(nElement, nil),
 	}
+
+	// Link via pointer result vector with Simulation state
+	sim.stateVector = sim.solver1D.X
+
 	sim.ApplyGeometry(simInput.Domains)
-	sim.SetInitialTemperature(sim.initialConditions.Temperature)
+	sim.InitializeElements(simInput)
 
-	sim.solver1D = solver.NewSolver1D(nElement)
-
-	sim.SetConductanceMatrix()
-	sim.SetSourceVector()
+	for _, elem := range sim.elements {
+		elem.SetCoefficient()
+		elem.SetSource()
+	}
 	sim.SetBoundaryConditions()
 
 	return sim
@@ -46,61 +58,29 @@ func New1DConductionSimulation(simInput *SimulationInput) *Simulation {
 
 func (s *Simulation) Start() {
 	// Setup parameters
-	deltaT := math.Inf(1)
+	normError := math.Inf(1)
 	tolerance := s.parameters.Tolerance
 
 	var iteration int
 	iterationMax := s.parameters.IterationMax
 
-	// Temperature vector
-	var err error
-
-	for deltaT > tolerance && iteration < iterationMax {
-		err = s.solver1D.Solve()
-		if err != nil {
-			log.Panicf("Error in solver1D: %v \n", err)
-		}
-		s.UpdateState()
-		deltaT = s.GetTemperatureNorm()
-		s.UpdatePreviousState()
+	for normError > tolerance && iteration < iterationMax {
+		normError, _ = s.Solve()
 		iteration += 1
 	}
-
+	fmt.Printf("Iteration : %v", iteration)
 	return
 }
 
-func (s *Simulation) PrevElem(e *Element) *Element {
-	return s.elements[e.eNum-1]
-}
-
-func (s *Simulation) NextElem(e *Element) *Element {
-	return s.elements[e.eNum+1]
-}
-
-func (s *Simulation) SetInitialTemperature(temperature float64) {
-	for _, elem := range s.elements {
-		elem.prevState.T = temperature
+func (s *Simulation) Solve() (normError float64, err error) {
+	err = s.solver1D.Solve()
+	if err != nil {
+		err = fmt.Errorf("Error in solver1D: %v \n", err)
 	}
-}
+	normError = utils.VecDiffNormL2(s.stateVector, s.prevStateVector)
+	s.UpdatePreviousState()
 
-func (s *Simulation) UpdateState() {
-	for idx, elem := range s.elements {
-		elem.T = s.solver1D.T.AtVec(idx)
-	}
-}
-
-func (s *Simulation) UpdatePreviousState() {
-	for _, elem := range s.elements {
-		elem.prevState = elem.State
-	}
-}
-
-func (s *Simulation) GetTemperatureNorm() float64 {
-	var norm float64
-	for _, elem := range s.elements {
-		norm += math.Pow(elem.T-elem.prevState.T, 2)
-	}
-	return math.Sqrt(norm)
+	return
 }
 
 func (s *Simulation) ExportData(inputFile string) {
