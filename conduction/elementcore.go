@@ -10,13 +10,13 @@ func (e *Element) UpdateInterfaceConductivity(interfaceMethod string) {
 	var condW float64                // [W/m.K] West element thermal conductivity
 	var condE float64                // [W/m.K] East element thermal conductivity
 	var condP float64                // [W/m.K] Current element thermal conductivity
-	condP = e.Material.Conductivity
+	condP = e.Conductivity
 
 	if e.previousElement != nil {
 		e.deltaW = e.DistanceFromElement(e.previousElement)
 		deltaWMinus = e.deltaW - (e.xPosition - e.start)
 		interpolationFactorW = deltaWMinus / e.deltaW
-		condW = e.previousElement.Material.Conductivity
+		condW = e.previousElement.Conductivity
 		e.interfaceConductivityW = InterfaceConductivity(interpolationFactorW, condP, condW, interfaceMethod)
 	}
 
@@ -24,7 +24,7 @@ func (e *Element) UpdateInterfaceConductivity(interfaceMethod string) {
 		e.deltaE = e.DistanceFromElement(e.nextElement)
 		deltaEPlus = e.deltaE - (e.end - e.xPosition)
 		interpolationFactorE = deltaEPlus / e.deltaE
-		condE = e.nextElement.Material.Conductivity
+		condE = e.nextElement.Conductivity
 		e.interfaceConductivityE = InterfaceConductivity(interpolationFactorE, condP, condE, interfaceMethod)
 	}
 }

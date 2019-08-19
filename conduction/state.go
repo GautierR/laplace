@@ -3,6 +3,7 @@ package conduction
 // State represent the temperature (T) and heat flux (Q) inside an element
 type State struct {
 	temperature *float64
+	heatFlux    float64
 }
 
 func NewState() *State {
@@ -15,4 +16,8 @@ func (s *State) SetT(value float64) {
 
 func (s *State) T() float64 {
 	return *s.temperature
+}
+
+func (s *State) HeatFlux() float64 {
+	return s.heatFlux
 }

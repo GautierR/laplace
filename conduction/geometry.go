@@ -1,15 +1,17 @@
 package conduction
 
-type Domain struct {
-	Start    float64    `json:"start"`
-	End      float64    `json:"end"`
-	Source   HeatSource `json:"source"`
-	Material Material   `json:"material"`
+import "math"
+
+type Geometry struct {
+	Diameter float64 `json:"diameter"`
+	//CrossSectionalArea float64 // [m²] Element cross sectional area
 }
 
-type Material struct {
-	Name         string  `json:"name"`
-	Density      float64 `json:"density"`
-	Conductivity float64 `json:"conductivity"`
-	SpecificHeat float64 `json:"specific_heat"`
+// CrossSectionalArea returns the cross sectional area in [m²]
+func (g *Geometry) CrossSectionalArea() float64 {
+	return math.Pi * math.Pow(g.Diameter, 2) / 4
+}
+
+func (g *Geometry) Perimeter() float64 {
+	return math.Pi * g.Diameter
 }

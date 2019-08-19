@@ -2,67 +2,39 @@ package conduction
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
-	"log"
+	"math"
 )
 
-type SimulationInput struct {
-	Domains            []Domain                 `json:"domain"`
-	BoundaryConditions []map[string]interface{} `json:"boundary_conditions"`
-	InitialConditions  InitialConditions        `json:"initial_conditions"`
-	Parameters         Parameters               `json:"parameters"`
-}
-
-type HeatSource struct {
-	Constant float64 `json:"constant"`
-	Linear   float64 `json:"linear"`
-}
-
-type InitialConditions struct {
-	Temperature float64 `json:"temperature"`
-}
-
-type Parameters struct {
-	IterationMax    int     `json:"iteration_max"`
-	Tolerance       float64 `json:"tolerance"`
-	NElement        int     `json:"n_element"`
-	InterfaceMethod string  `json:"interface_method"`
-}
-
-func NewSimulationInput(fileName string) *SimulationInput {
-	var simulationInput SimulationInput
-
+func ParseSimulationFromFile(fileName string) (sim *Simulation, err error) {
 	file, err := ioutil.ReadFile(fileName)
 	if err != nil {
-		log.Panicf("Error while reading case file: %v \n", err)
+		err = fmt.Errorf("Error while reading case file: %v \n", err)
+		return
 	}
 
-	err = json.Unmarshal([]byte(file), &simulationInput)
+	err = json.Unmarshal([]byte(file), &sim)
 	if err != nil {
-		log.Panicf("Error while loading case file: %v \n", err)
+		err = fmt.Errorf("Error while loading case file: %v \n", err)
+		return
 	}
-
-	return &simulationInput
-}
-
-func (sI *SimulationInput) GetDomainLimits() (start float64, end float64) {
-	// TBD : Implement domains inspection
-	start = sI.Domains[0].Start
-	end = sI.Domains[len(sI.Domains)-1].End
 	return
 }
 
-func (s *Simulation) ApplyGeometry(domains []Domain) {
-	for _, domain := range domains {
-		geometry := &Geometry{
-			Source:   domain.Source,
-			Material: domain.Material,
+func (s *Simulation) GetDomainLimits() (start float64, end float64) {
+	start = math.Inf(1)
+	end = math.Inf(-1)
+
+	// TODO : Implement domains inspection
+	for _, domain := range s.Domains {
+		if domain.Start < start {
+			start = domain.Start
 		}
-		for _, element := range s.elements {
-			if domain.Start <= element.xPosition &&
-				element.xPosition <= domain.End+1e-9 {
-				element.Geometry = geometry
-			}
+
+		if domain.End > end {
+			end = domain.End
 		}
 	}
+	return
 }

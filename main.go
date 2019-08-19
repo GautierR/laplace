@@ -10,12 +10,10 @@ import (
 )
 
 func main() {
-	caseFileName := "case2_go.json"
+	caseFileName := "default.json"
 
 	// Load simulation file
-	simInput := conduction.NewSimulationInput(caseFileName)
-
-	simulation := conduction.New1DConductionSimulation(simInput)
+	simulation := conduction.New1DConductionSimulation(caseFileName)
 	simulation.Start()
 
 	simulation.ExportData(caseFileName)
@@ -25,10 +23,10 @@ func main() {
 		log.Panic(err)
 	}
 
-	xys := make(plotter.XYs, simInput.Parameters.NElement)
+	xys := make(plotter.XYs, simulation.Parameters.NElement)
 	for i := range xys {
 		xys[i].X = simulation.PositionAt(i)
-		xys[i].Y = simulation.TemperatureAt(i)
+		xys[i].Y = simulation.HeatFluxAt(i)
 	}
 
 	p.Title.Text = "1D Heat Conduction Steady-State"

@@ -7,7 +7,9 @@ import (
 )
 
 type Element struct {
+	domainTag string
 	*Geometry
+	*Material
 	*State            // State contain the physical properties of the element (i.e. T,..)
 	prevState *State  // Previous state
 	eNum      int     // Element number, correspond to the index in Simulation grid
@@ -15,6 +17,8 @@ type Element struct {
 	start     float64 // [m] Starting point of the element
 	end       float64 // [m] Ending point of the element
 	length    float64 // [m] Element length
+
+	qResult float64
 
 	aW *float64 // A Matrix coefficient at west
 	aP *float64 // A Matrix coefficient at point
@@ -30,9 +34,14 @@ type Element struct {
 	nextElement     *Element // Pointer to the next element
 }
 
-type Geometry struct {
-	Source   HeatSource
-	Material Material
+func (e *Element) Length() float64 {
+	return e.length
+}
+
+func (e *Element) SetHeatFlux() {
+	if e.previousElement != nil && e.nextElement != nil {
+		e.heatFlux = -*e.aP * (e.nextElement.T() - e.previousElement.T()) / 4
+	}
 }
 
 // NewEquidistantGrid return an equidistant grid of element pointers.
@@ -87,6 +96,9 @@ func NewEquidistantGrid(start float64, end float64, n int) (grid []*Element, err
 			" the end of the domain [%v]", currentPosition, end)
 	}
 
+	// Set the last element end equal to grid end
+	grid[n-1].end = end
+
 	return
 }
 
@@ -111,10 +123,42 @@ func (e *Element) SetCoefficient() {
 
 }
 
-func (e *Element) SetSource() {
-	*e.b = e.Source.Constant * e.length
-}
+func (e *Element) SetBoundaryCondition(bC *BoundaryCondition, tZ *ThermalZone) {
+	switch tZ.Type {
+	case "constant_temperature":
+		if e.previousElement != nil {
+			*e.aW = 0
+		}
+		if e.nextElement != nil {
+			*e.aE = 0
+		}
+		*e.aP = 1
+		*e.b = tZ.FixedTemperature
 
-func (e *Element) SetBoundaryCondition(condition BoundaryCondition) {
-	condition.SetAtElement(e)
+	case "longitudinal_heat_flux":
+		*e.b += tZ.HeatFlux
+
+	case "longitudinal_heat_flow":
+		*e.b += tZ.HeatFlow * e.CrossSectionalArea()
+
+	case "longitudinal_heat_transfer_coefficient":
+		*e.aP += tZ.HeatTransferCoefficient
+		*e.b += tZ.HeatTransferCoefficient * tZ.InfinityTemperature
+
+	case "internal_heat_generation":
+		*e.b += tZ.InternalHeat * e.Length()
+
+	case "heat_flux":
+		*e.b += tZ.HeatFlux * (e.Perimeter() / e.CrossSectionalArea()) * e.Length()
+
+	case "heat_flow":
+		*e.b += tZ.HeatFlow / (bC.Length() * e.CrossSectionalArea()) * e.Length()
+
+	case "heat_transfer_coefficient":
+		*e.aP += tZ.HeatTransferCoefficient *
+			(e.Perimeter() / e.CrossSectionalArea()) * e.Length()
+		*e.b += (tZ.HeatTransferCoefficient * tZ.InfinityTemperature) *
+			(e.Perimeter() / e.CrossSectionalArea()) * e.Length()
+	}
+
 }

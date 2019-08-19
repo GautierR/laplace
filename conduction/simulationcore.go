@@ -8,8 +8,24 @@ func (s *Simulation) PositionAt(idx int) float64 {
 	return s.elements[idx].xPosition
 }
 
+func (s *Simulation) NearestElementFrom(x float64) *Element {
+	for _, elem := range s.elements {
+		if elem.xPosition > x {
+			if x-elem.previousElement.xPosition < elem.xPosition-x {
+				return elem.previousElement
+			}
+			return elem
+		}
+	}
+	return s.elements[len(s.elements)-1]
+}
+
 func (s *Simulation) TemperatureAt(idx int) float64 {
 	return s.elements[idx].T()
+}
+
+func (s *Simulation) HeatFluxAt(idx int) float64 {
+	return s.elements[idx].HeatFlux()
 }
 
 func (s *Simulation) GetXData() []float64 {
@@ -24,6 +40,14 @@ func (s *Simulation) GetTData() []float64 {
 	var tData []float64
 	for _, elem := range s.elements {
 		tData = append(tData, elem.T())
+	}
+	return tData
+}
+
+func (s *Simulation) GetHFData() []float64 {
+	var tData []float64
+	for _, elem := range s.elements {
+		tData = append(tData, elem.HeatFlux())
 	}
 	return tData
 }
@@ -49,7 +73,7 @@ func (s *Simulation) LinkElements() {
 	}
 }
 
-func (s *Simulation) InitializeElements(input *SimulationInput) {
+func (s *Simulation) InitializeElements() {
 	s.LinkElements()
 
 	for _, elem := range s.elements {
@@ -62,26 +86,32 @@ func (s *Simulation) InitializeElements(input *SimulationInput) {
 		elem.LinkToMatrices(A, B, state, prevState)
 
 		// Set Initial Temperature
-		elem.prevState.SetT(input.InitialConditions.Temperature)
+		elem.prevState.SetT(s.InitialConditions[elem.domainTag].Temperature)
 
 		// Compute and update interface thermal conductivity
-		elem.UpdateInterfaceConductivity(s.parameters.InterfaceMethod)
+		elem.UpdateInterfaceConductivity(s.Parameters.InterfaceMethod)
 	}
 }
 
 // SetBoundaryCondition
 func (s *Simulation) SetBoundaryConditions() {
-	for _, bC := range s.boundaryConditions {
-		for _, elem := range s.elements {
-			if elem.xPosition >= bC.Start() && elem.xPosition <= bC.End() {
-				elem.SetBoundaryCondition(bC)
+	for _, bC := range s.BoundaryConditions {
+		tZ := s.ThermalZones[bC.Tag]
+		if bC.IsAtPoint() {
+			s.NearestElementFrom(bC.Start).SetBoundaryCondition(&bC, &tZ)
+		} else {
+			for _, elem := range s.elements {
+				if elem.xPosition >= bC.Start && elem.xPosition <= bC.End {
+					elem.SetBoundaryCondition(&bC, &tZ)
+				}
 			}
 		}
 	}
 }
 
-func (s *Simulation) UpdatePreviousState() {
+func (s *Simulation) UpdateState() {
 	for _, elem := range s.elements {
 		elem.prevState.SetT(elem.T())
+		elem.SetHeatFlux()
 	}
 }
